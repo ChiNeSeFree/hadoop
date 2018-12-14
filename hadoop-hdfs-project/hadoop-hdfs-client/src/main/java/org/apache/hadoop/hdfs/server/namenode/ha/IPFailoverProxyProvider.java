@@ -17,13 +17,11 @@
  */
 package org.apache.hadoop.hdfs.server.namenode.ha;
 
-import java.io.Closeable;
 import java.io.IOException;
 import java.net.URI;
 
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.hdfs.DFSUtilClient;
-import org.apache.hadoop.ipc.RPC;
 
 /**
  * A NNFailoverProxyProvider implementation which works on IP failover setup.
@@ -67,14 +65,7 @@ public class IPFailoverProxyProvider<T> extends
    */
   @Override
   public synchronized void close() throws IOException {
-    if (nnProxyInfo.proxy == null) {
-      return;
-    }
-    if (nnProxyInfo.proxy instanceof Closeable) {
-      ((Closeable)nnProxyInfo.proxy).close();
-    } else {
-      RPC.stopProxy(nnProxyInfo.proxy);
-    }
+    nnProxyInfo.close();
   }
 
   /**

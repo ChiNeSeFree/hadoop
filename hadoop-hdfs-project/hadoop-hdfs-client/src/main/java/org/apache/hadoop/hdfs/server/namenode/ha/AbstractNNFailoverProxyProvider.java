@@ -18,6 +18,7 @@
 
 package org.apache.hadoop.hdfs.server.namenode.ha;
 
+import java.io.Closeable;
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.net.URI;
@@ -28,13 +29,17 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicBoolean;
 
+import com.google.common.annotations.VisibleForTesting;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.CommonConfigurationKeysPublic;
 import org.apache.hadoop.ha.HAServiceProtocol.HAServiceState;
 import org.apache.hadoop.hdfs.DFSUtilClient;
 import org.apache.hadoop.hdfs.HAUtilClient;
+import org.apache.hadoop.hdfs.NameNodeProxiesClient;
 import org.apache.hadoop.hdfs.client.HdfsClientConfigKeys;
+import org.apache.hadoop.hdfs.protocol.ClientProtocol;
 import org.apache.hadoop.io.retry.FailoverProxyProvider;
+import org.apache.hadoop.ipc.RPC;
 import org.apache.hadoop.security.UserGroupInformation;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -110,7 +115,7 @@ public abstract class AbstractNNFailoverProxyProvider<T> implements
   /**
    * ProxyInfo to a NameNode. Includes its address.
    */
-  public static class NNProxyInfo<T> extends ProxyInfo<T> {
+  public static class NNProxyInfo<T> extends ProxyInfo<T> implements Closeable {
     private InetSocketAddress address;
     /**
      * The currently known state of the NameNode represented by this ProxyInfo.
@@ -118,6 +123,9 @@ public abstract class AbstractNNFailoverProxyProvider<T> implements
      * time the state was checked.
      */
     private HAServiceState cachedState;
+
+    /** Proxy to get NameNode's HA service state. */
+    private ClientProtocol serviceStateProxy;
 
     public NNProxyInfo(InetSocketAddress address) {
       super(null, address.toString());
@@ -128,12 +136,33 @@ public abstract class AbstractNNFailoverProxyProvider<T> implements
       return address;
     }
 
+    public void refreshCachedState() throws IOException {
+      cachedState = serviceStateProxy.getHAServiceState();
+    }
+
     public void setCachedState(HAServiceState state) {
       cachedState = state;
     }
 
     public HAServiceState getCachedState() {
       return cachedState;
+    }
+
+    @VisibleForTesting
+    void setClientProxyForTesting(ClientProtocol cp) {
+      this.serviceStateProxy = cp;
+    }
+
+    @Override
+    public void close() throws IOException {
+      super.close();
+      if (serviceStateProxy != null) {
+        if (serviceStateProxy instanceof Closeable) {
+          ((Closeable) serviceStateProxy).close();
+        } else {
+          RPC.stopProxy(serviceStateProxy);
+        }
+      }
     }
   }
 
@@ -146,8 +175,8 @@ public abstract class AbstractNNFailoverProxyProvider<T> implements
    * Create a proxy if it has not been created yet.
    */
   protected NNProxyInfo<T> createProxyIfNeeded(NNProxyInfo<T> pi) {
+    assert  pi.getAddress() != null : "Proxy address is null";
     if (pi.proxy == null) {
-      assert pi.getAddress() != null : "Proxy address is null";
       try {
         pi.proxy = factory.createProxy(conf,
             pi.getAddress(), xface, ugi, false, getFallbackToSimpleAuth());
@@ -155,6 +184,21 @@ public abstract class AbstractNNFailoverProxyProvider<T> implements
         LOG.error("{} Failed to create RPC proxy to NameNode at {}",
             this.getClass().getSimpleName(), pi.address, ioe);
         throw new RuntimeException(ioe);
+      }
+    }
+    if (pi.serviceStateProxy == null) {
+      if (pi.proxy instanceof ClientProtocol) {
+        pi.serviceStateProxy = (ClientProtocol) pi.proxy;
+      } else {
+        try {
+          pi.serviceStateProxy = NameNodeProxiesClient
+              .createNonHAProxyWithClientProtocol(pi.address, conf, ugi,
+                  false, getFallbackToSimpleAuth());
+        } catch (IOException ioe) {
+          LOG.error("{} Failed to create client RPC proxy to NameNode at {}",
+              this.getClass().getSimpleName(), pi.address, ioe);
+          throw new RuntimeException(ioe);
+        }
       }
     }
     return pi;

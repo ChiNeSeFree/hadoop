@@ -18,8 +18,10 @@
 package org.apache.hadoop.io.retry;
 
 import java.io.Closeable;
+import java.io.IOException;
 
 import org.apache.hadoop.classification.InterfaceStability;
+import org.apache.hadoop.ipc.RPC;
 
 /**
  * An implementer of this interface is capable of providing proxy objects for
@@ -30,7 +32,7 @@ import org.apache.hadoop.classification.InterfaceStability;
  */
 @InterfaceStability.Evolving
 public interface FailoverProxyProvider<T> extends Closeable {
-  static class ProxyInfo<T> {
+  static class ProxyInfo<T> implements Closeable {
     public T proxy;
     /*
      * The information (e.g., the IP address) of the current proxy object. It
@@ -54,6 +56,17 @@ public interface FailoverProxyProvider<T> extends Closeable {
     @Override
     public String toString() {
       return proxyName() + " over " + proxyInfo;
+    }
+
+    @Override
+    public void close() throws IOException {
+      if (proxy != null) {
+        if (proxy instanceof Closeable) {
+          ((Closeable) proxy).close();
+        } else {
+          RPC.stopProxy(proxy);
+        }
+      }
     }
   }
 

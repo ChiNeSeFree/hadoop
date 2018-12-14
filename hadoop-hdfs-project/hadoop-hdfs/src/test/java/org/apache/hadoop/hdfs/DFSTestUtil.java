@@ -71,7 +71,6 @@ import java.util.Random;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.TimeoutException;
-import java.util.concurrent.atomic.AtomicBoolean;
 
 import com.google.common.base.Charsets;
 import com.google.common.base.Joiner;
@@ -186,7 +185,6 @@ import org.apache.hadoop.net.NetUtils;
 import org.apache.hadoop.net.unix.DomainSocket;
 import org.apache.hadoop.net.unix.TemporarySocketDirectory;
 import org.apache.hadoop.security.AccessControlException;
-import org.apache.hadoop.security.RefreshUserMappingsProtocol;
 import org.apache.hadoop.security.ShellBasedUnixGroupsMapping;
 import org.apache.hadoop.security.UserGroupInformation;
 import org.apache.hadoop.security.token.Token;
@@ -2016,24 +2014,6 @@ public class DFSTestUtil {
     return NameNodeProxies.createNonHAProxy(conf,
         DFSUtilClient.getNNAddress(nameNodeUri), NamenodeProtocol.class, ugi,
         false).getProxy();
-  }
-
-  /**
-   * Get the RefreshUserMappingsProtocol RPC proxy for the NN associated with
-   * this DFSClient object
-   *
-   * @param nameNodeUri the URI of the NN to get a proxy for.
-   *
-   * @return the RefreshUserMappingsProtocol RPC proxy associated with this
-   * DFSClient object
-   */
-  @VisibleForTesting
-  public static RefreshUserMappingsProtocol getRefreshUserMappingsProtocolProxy(
-      Configuration conf, URI nameNodeUri) throws IOException {
-    final AtomicBoolean nnFallbackToSimpleAuth = new AtomicBoolean(false);
-    return NameNodeProxies.createProxy(conf,
-        nameNodeUri, RefreshUserMappingsProtocol.class,
-        nnFallbackToSimpleAuth).getProxy();
   }
 
   /**

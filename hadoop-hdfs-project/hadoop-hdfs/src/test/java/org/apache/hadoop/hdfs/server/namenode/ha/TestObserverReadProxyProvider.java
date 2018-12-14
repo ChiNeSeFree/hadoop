@@ -27,12 +27,14 @@ import java.util.Map;
 import java.util.concurrent.atomic.AtomicBoolean;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.permission.FsAction;
+import org.apache.hadoop.hdfs.NameNodeProxies;
 import org.apache.hadoop.hdfs.client.HdfsClientConfigKeys;
 import org.apache.hadoop.hdfs.protocol.ClientProtocol;
 import org.apache.hadoop.hdfs.protocol.LocatedBlock;
 import org.apache.hadoop.ipc.ObserverRetryOnActiveException;
 import org.apache.hadoop.ipc.RemoteException;
 import org.apache.hadoop.ipc.StandbyException;
+import org.apache.hadoop.security.RefreshUserMappingsProtocol;
 import org.apache.hadoop.security.UserGroupInformation;
 import org.junit.Before;
 import org.junit.Test;
@@ -109,6 +111,10 @@ public class TestObserverReadProxyProvider {
           URI uri, String addressKey) {
         List<NNProxyInfo<ClientProtocol>> nnProxies =
             super.getProxyAddresses(uri, addressKey);
+        for (NNProxyInfo<ClientProtocol> nnProxy : nnProxies) {
+          String address = nnProxy.getAddress().toString();
+          nnProxy.setClientProxyForTesting(proxyMap.get(address));
+        }
         return nnProxies;
       }
     };
@@ -287,6 +293,18 @@ public class TestObserverReadProxyProvider {
 
     doRead();
     assertHandledBy(1);
+  }
+
+  /**
+   * Test that ObserverReadProxyProvider also works with NameNodeProtocols.
+   * See HDFS-14116 for details.
+   */
+  @Test
+  public void testNameNodeProtocol() throws Exception {
+    setupProxyProvider(3);
+    conf.set(HdfsClientConfigKeys.Failover.PROXY_PROVIDER_KEY_PREFIX
+        + "." + ns, ObserverReadProxyProvider.class.getName());
+    NameNodeProxies.createProxy(conf, nnURI, RefreshUserMappingsProtocol.class);
   }
 
   private void doRead() throws Exception {

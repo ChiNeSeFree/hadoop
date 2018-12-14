@@ -28,6 +28,7 @@ import java.util.List;
 
 import com.google.common.base.Preconditions;
 
+import org.apache.hadoop.hdfs.NameNodeProxies;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.apache.hadoop.conf.Configuration;
@@ -1521,8 +1522,8 @@ public class NNThroughputBenchmark implements Tool {
         clientProto = dfs.getClient().getNamenode();
         dataNodeProto = new DatanodeProtocolClientSideTranslatorPB(
             DFSUtilClient.getNNAddress(nnUri), config);
-        refreshUserMappingsProto =
-            DFSTestUtil.getRefreshUserMappingsProtocolProxy(config, nnUri);
+        refreshUserMappingsProto = NameNodeProxies.createProxy(
+            config, nnUri, RefreshUserMappingsProtocol.class).getProxy();
         getBlockPoolId(dfs);
       }
       // run each benchmark

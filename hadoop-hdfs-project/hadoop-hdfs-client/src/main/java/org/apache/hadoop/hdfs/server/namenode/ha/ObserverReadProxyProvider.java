@@ -30,7 +30,6 @@ import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.ha.HAServiceProtocol.HAServiceState;
 import org.apache.hadoop.hdfs.ClientGSIContext;
 import org.apache.hadoop.hdfs.client.HdfsClientConfigKeys;
-import org.apache.hadoop.hdfs.protocol.ClientProtocol;
 import org.apache.hadoop.io.retry.AtMostOnce;
 import org.apache.hadoop.io.retry.Idempotent;
 import org.apache.hadoop.io.retry.RetryPolicies;
@@ -58,13 +57,14 @@ import com.google.common.annotations.VisibleForTesting;
  * Read and write requests will still be sent to active NN if reading from
  * observer is turned off.
  */
-public class ObserverReadProxyProvider<T extends ClientProtocol>
+public class ObserverReadProxyProvider<T>
     extends AbstractNNFailoverProxyProvider<T> {
   private static final Logger LOG = LoggerFactory.getLogger(
       ObserverReadProxyProvider.class);
 
-  /** Client-side context for syncing with the NameNode server side. */
-  private final AlignmentContext alignmentContext;
+  /** Client-side context for syncing with the NameNode server side.
+   * This will be null if protocol is not ClientProtocol. */
+  private AlignmentContext alignmentContext;
 
   /** The inner proxy provider used for active/standby failover. */
   private final AbstractNNFailoverProxyProvider<T> failoverProxy;
@@ -114,8 +114,11 @@ public class ObserverReadProxyProvider<T extends ClientProtocol>
       AbstractNNFailoverProxyProvider<T> failoverProxy) {
     super(conf, uri, xface, factory);
     this.failoverProxy = failoverProxy;
-    this.alignmentContext = new ClientGSIContext();
-    ((ClientHAProxyFactory<T>) factory).setAlignmentContext(alignmentContext);
+
+    if (factory instanceof ClientHAProxyFactory<?>) {
+      this.alignmentContext = new ClientGSIContext();
+      ((ClientHAProxyFactory<T>) factory).setAlignmentContext(alignmentContext);
+    }
 
     // Don't bother configuring the number of retries and such on the retry
     // policy since it is mainly only used for determining whether or not an
@@ -145,6 +148,7 @@ public class ObserverReadProxyProvider<T extends ClientProtocol>
     this.observerReadEnabled = true;
   }
 
+  @VisibleForTesting
   public AlignmentContext getAlignmentContext() {
     return alignmentContext;
   }
@@ -212,8 +216,7 @@ public class ObserverReadProxyProvider<T extends ClientProtocol>
     currentIndex = (currentIndex + 1) % nameNodeProxies.size();
     currentProxy = createProxyIfNeeded(nameNodeProxies.get(currentIndex));
     try {
-      HAServiceState state = currentProxy.proxy.getHAServiceState();
-      currentProxy.setCachedState(state);
+      currentProxy.refreshCachedState();
     } catch (IOException e) {
       LOG.info("Failed to connect to {}. Setting cached state to Standby",
           currentProxy.getAddress(), e);

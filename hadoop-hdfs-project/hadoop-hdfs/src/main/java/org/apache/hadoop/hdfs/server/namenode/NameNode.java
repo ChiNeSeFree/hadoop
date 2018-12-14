@@ -714,10 +714,18 @@ public class NameNode extends ReconfigurableBase implements
     if (NamenodeRole.NAMENODE == role) {
       httpServer.setNameNodeAddress(getNameNodeAddress());
       httpServer.setFSImage(getFSImage());
+      if (levelDBAliasMapServer != null) {
+        httpServer.setAliasMap(levelDBAliasMapServer.getAliasMap());
+      }
     }
 
     startCommonServices(conf);
     startMetricsLogger(conf);
+  }
+
+  @VisibleForTesting
+  public InMemoryLevelDBAliasMapServer getAliasMapServer() {
+    return levelDBAliasMapServer;
   }
 
   private void startAliasMapServerIfNecessary(Configuration conf)
@@ -796,6 +804,9 @@ public class NameNode extends ReconfigurableBase implements
       startHttpServer(conf);
       httpServer.setNameNodeAddress(getNameNodeAddress());
       httpServer.setFSImage(getFSImage());
+      if (levelDBAliasMapServer != null) {
+        httpServer.setAliasMap(levelDBAliasMapServer.getAliasMap());
+      }
     }
     rpcServer.start();
     try {
